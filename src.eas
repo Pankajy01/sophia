@@ -1,0 +1,47 @@
+@compiler >= 6
+
+include "String.aes"
+
+contract SmartWholesailer =
+  record payment = { retailer_address : address
+                , shop_address : address
+                , price : int
+                , is_paid : bool
+                , name : string
+                , product_details : string }
+
+  type state = map(address, payment)
+  
+  entrypoint init() : state = {}
+
+  stateful entrypoint add_product(name : string, price : int, product_details : string) =
+    let product_info = { retailer_address = Call.caller
+                        , shop_address = Call.caller
+                        , price = price
+                        , is_paid = false
+                        , name = name
+                        , product_details = product_details }
+    put(state{ [Call.caller] = product_info })
+
+  entrypoint get_product() : option(payment) =
+    Map.lookup(Call.caller, state)
+
+  payable stateful entrypoint pay_product(retailer_address : address, name : string) =
+    let owner_product =
+      switch(Map.lookup(retailer_address, state))
+        None    => abort("Product not found")
+        Some(e) => e
+
+    
+    require(owner_product.name == name, "Product not found for the specified name")
+
+    
+    require(!owner_product.is_paid, "Product is already paid")
+    require(Chain.balance(Call.caller) >= owner_product.price, String.concat("Not enough funds to pay for the product: ", name))
+    
+    
+    Chain.spend(retailer_address, owner_product.price)
+
+    
+    let updated_product = owner_product{ shop_address = Call.caller, is_paid = true }
+    put(state{ [retailer_address]  = updated_product })
